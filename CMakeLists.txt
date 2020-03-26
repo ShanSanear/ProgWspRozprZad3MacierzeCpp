@@ -3,4 +3,4 @@ project(ProgWspRozprZad3MacierzeCpp)
 
 set(CMAKE_CXX_STANDARD 20)
 
-add_executable(ProgWspRozprZad3MacierzeCpp main.cpp)
+add_executable(ProgWspRozprZad3MacierzeCpp src/main.cpp)
