@@ -19,7 +19,7 @@ output = args.output
 int_random = np.random.randint(lower, higher, (n, m))
 double_random = np.random.rand(n, m)
 finished_matrix = int_random * double_random
-np.savetxt(output, finished_matrix, fmt='%.5f', delimiter=';')
+np.savetxt(output, finished_matrix, fmt='%.6f', delimiter=';')
 
 with open(output, 'r+') as file:
     content = file.read()
