@@ -48,7 +48,7 @@ void save_matrix (const matrix& matrix_to_save, const fs::path &output_file_path
     output << matrix_to_save.size() << std::endl;
     output << matrix_to_save.at(0).size() << std::endl;
     std::ostringstream oss;
-    oss << std::fixed << std::setprecision(5);
+    oss << std::fixed << std::setprecision(6);
     for (auto row : matrix_to_save) {
         oss.str(std::string());
         std::copy(row.begin(), row.end()-1, std::ostream_iterator<double>(oss, ";"));
@@ -58,6 +58,7 @@ void save_matrix (const matrix& matrix_to_save, const fs::path &output_file_path
 }
 
 bool check_matrix_sizes(const matrix& matrix_a, const matrix& matrix_b) {
+    //TODO there should be only one of those checks, but which one?
     return matrix_a.size() == matrix_b.at(0).size() && matrix_a.at(0).size() == matrix_b.size();
 }
 

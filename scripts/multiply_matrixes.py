@@ -10,7 +10,7 @@ output = args.output[0]
 matrix_a = np.genfromtxt(matrixes[0], delimiter=';', skip_header=2)
 matrix_b = np.genfromtxt(matrixes[1], delimiter=';', skip_header=2)
 out = np.dot(matrix_a, matrix_b)
-np.savetxt(output, out, fmt='%.5f', delimiter=';')
+np.savetxt(output, out, fmt='%.6f', delimiter=';')
 with open(output, 'r+') as file:
     content = file.read()
     file.seek(0, 0)
