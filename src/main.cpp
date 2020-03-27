@@ -42,7 +42,7 @@ matrix multiply_matrixes(const matrix &matrix_a, const matrix &matrix_b) {
     return output_matrix;
 }
 
-void save_matrix (const matrix& matrix_to_save, const fs::path &output_file_path) {
+void save_matrix (const matrix& matrix_to_save, const std::string &output_file_path) {
     std::ofstream output(output_file_path);
 
     output << matrix_to_save.size() << std::endl;
@@ -66,7 +66,6 @@ int main(int argc, char *argv[]) {
     auto result = parse_arguments(argc, argv);
     fs::path matrix_a_path = fs::absolute(fs::path(result["matrix_a"].as<std::string>()));
     fs::path matrix_b_path = fs::absolute(fs::path(result["matrix_b"].as<std::string>()));
-    fs::path output_file_path(result["output"].as<std::string>());
     if (matrix_a_path.is_relative()) {
         matrix_a_path.relative_path();
     }
@@ -84,8 +83,11 @@ int main(int argc, char *argv[]) {
         return -1;
     }
     matrix output_matrix = multiply_matrixes(matrix_a, matrix_b);
-    std::cout << std::fixed;
-    std::cout << std::setprecision(5);
-    save_matrix(output_matrix, output_file_path);
+    double Ts = 0.22;
+    double Tp = 0.22;
+    std::ostringstream oss;
+    oss << std::fixed <<std::setprecision(5);
+    oss << "C_" << Ts << "_" << Tp << ".csv";
+    save_matrix(output_matrix, oss.str());
     return 0;
 }

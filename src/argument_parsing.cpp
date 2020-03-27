@@ -16,19 +16,17 @@ auto parse_arguments(int argc, char **argv) {
                  "First matrix to be multipled", cxxopts::value<std::string>())
                 ("matrix_b",
                  "Second matrix to be multipled", cxxopts::value<std::string>())
-                ("output",
-                 "path to output file", cxxopts::value<std::string>())
                 ("positional",
-                 "Excessive positional arguments", cxxopts::value<std::string>())
+                 "Excessive positional arguments", cxxopts::value<std::vector<std::string>>())
                 ("help", "Print help");
-        options.parse_positional({"matrix_a", "matrix_b", "output", "positional"});
+        options.parse_positional({"matrix_a", "matrix_b", "positional"});
         auto result = options.parse(argc, argv);
         auto arguments = result.arguments();
         int num_of_arguments = arguments.size();
         if (result.count("help") | (num_of_arguments == 0)) {
             show_help_and_exit(options, 0);
         }
-        if (result.count("matrix_a") != 1 || result.count("matrix_b") != 1 || result.count("output") != 1) {
+        if (result.count("matrix_a") != 1 || result.count("matrix_b") != 1) {
             printf("Didnt provide one of the matrixes or more than one matrix parameter provided\n");
             show_help_and_exit(options, 1);
         }
