@@ -9,7 +9,7 @@ auto parse_arguments(int argc, char **argv) {
     try {
         cxxopts::Options options(argv[0]);
         options
-                .positional_help("[path_to_matrix_a path_to_matrix_b path_to_output]")
+                .positional_help("[path_to_matrix_a path_to_matrix_b]")
                 .show_positional_help();
         options.add_options()
                 ("matrix_a",
