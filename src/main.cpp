@@ -32,23 +32,25 @@ matrix parseCSV(const fs::path &input_csv_file) {
     return parsedCsv;
 };
 
-matrix multiply_matrixes(const matrix &matrix_a, const matrix &matrix_b, int thread_number, int inner_thread_number) {
+matrix multiply_matrixes(const matrix &matrix_a, const matrix &matrix_b, int thread_number) {
     matrix output_matrix(matrix_a.size(), std::vector<double>(matrix_b.at(0).size()));
     long double start_time = omp_get_wtime();
-#pragma omp parallel num_threads(thread_number) default(none) shared(matrix_a, matrix_b, output_matrix, inner_thread_number)
-    {
-        for (std::size_t row = 0; row < output_matrix.size(); row++) {
-            for (std::size_t col = 0; col < output_matrix.at(0).size(); col++) {
-#pragma omp parallel for num_threads(inner_thread_number)
-                for (std::size_t inner = 0; inner < matrix_b.size(); inner++) {
-                    output_matrix.at(row).at(col) += matrix_a.at(row).at(inner) * matrix_b.at(inner).at(col);
-                }
+    /* Klauzula collapse znacząco ułatwia optymalizację zagnieżdżonych pętli.
+     * Przy użyciu zwykłego zagnieżdżania pętli, należałoby odpowiednio rozdzielić ilość procesorów pomiędzy nimi.
+     * W przypadku 3 zagnieżdżeń, jak poniżej jest to znacząco utrudnione by było optymalne.
+     * Collapse ułatwia to, przez co biblioteka sama zajmuje się rozdzieleniem wątków w najbardziej optymalny sposób,
+     * oraz powoduje że kod jest znacznie czytelniejszy.
+     * */
+#pragma omp parallel for num_threads(thread_number) default(none) shared(matrix_a, matrix_b, output_matrix) collapse(3)
+    for (std::size_t row = 0; row < output_matrix.size(); row++) {
+        for (std::size_t col = 0; col < output_matrix.at(0).size(); col++) {
+            for (std::size_t inner = 0; inner < matrix_b.size(); inner++) {
+                output_matrix.at(row).at(col) += matrix_a.at(row).at(inner) * matrix_b.at(inner).at(col);
             }
         }
     }
     long double end_time = omp_get_wtime();
-    printf("Multiplying took %Lf seconds\n", end_time - start_time);
-    printf("Threads number: %d, inner threads number: %d\n", thread_number, inner_thread_number);
+    printf("Multiplying took %Lf seconds\n using %d threads\n", end_time - start_time, thread_number);
     return output_matrix;
 }
 
@@ -96,11 +98,11 @@ int main(int argc, char *argv[]) {
         return -1;
     }
     printf("Multiplying matrixes\n");
-    matrix output_matrix = multiply_matrixes(matrix_a, matrix_b, 2, 4);
-    output_matrix = multiply_matrixes(matrix_a, matrix_b, 1, 1);
-    output_matrix = multiply_matrixes(matrix_a, matrix_b, 4, 2);
-    output_matrix = multiply_matrixes(matrix_a, matrix_b, 8, 1);
-    output_matrix = multiply_matrixes(matrix_a, matrix_b, 8, 8);
+    matrix output_matrix = multiply_matrixes(matrix_a, matrix_b, 2);
+    output_matrix = multiply_matrixes(matrix_a, matrix_b, 1);
+    output_matrix = multiply_matrixes(matrix_a, matrix_b, 4);
+    output_matrix = multiply_matrixes(matrix_a, matrix_b, 8);
+    output_matrix = multiply_matrixes(matrix_a, matrix_b, 8);
     double Ts = 0.22;
     double Tp = 0.22;
     std::ostringstream oss;

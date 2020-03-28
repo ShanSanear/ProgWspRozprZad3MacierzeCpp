@@ -13,4 +13,4 @@ target_include_directories(cxxopts INTERFACE
         $<INSTALL_INTERFACE:include>
         )
 
-add_executable(ProgWspRozprZad3MacierzeCpp src/main.cpp)
+add_executable(ProgWspRozprZad3MacierzeCpp src/main.cpp src/menu.cpp)
