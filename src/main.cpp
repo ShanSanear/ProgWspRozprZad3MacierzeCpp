@@ -7,6 +7,7 @@
 #include <filesystem>
 #include "argument_parsing.cpp"
 #include <omp.h>
+#include "menu.cpp"
 
 using matrix = std::vector<std::vector<double>>;
 namespace fs = std::filesystem;
