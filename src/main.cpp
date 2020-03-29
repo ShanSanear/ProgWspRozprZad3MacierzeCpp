@@ -64,15 +64,15 @@ void save_matrix(const matrix &matrix_to_save, const std::string &output_file_pa
 }
 
 matrix multiply_matrixes_parallel(const matrix &matrix_a, const matrix &matrix_b, int processors_count,
-                                  bool is_schedule_static, int dynamic_portion) {
+                                  bool is_schedule_static, int chunk_size) {
     matrix output_matrix(matrix_a.size(), std::vector<double>(matrix_b.at(0).size()));
     int output_rows = output_matrix.size();
     int output_columns = output_matrix.at(0).size();
     int inner_size = matrix_b.size();
     if (is_schedule_static) {
         printf("Multiplying matrixes using static schedule with %d processors\n", processors_count);
-#pragma omp parallel for num_threads(processors_count) collapse(3) default(none) schedule(static) \
-        shared(matrix_a, matrix_b, output_matrix, output_rows, output_columns, inner_size)
+#pragma omp parallel for num_threads(processors_count) collapse(3) default(none) schedule(static, chunk_size) \
+        shared(matrix_a, matrix_b, output_matrix, output_rows, output_columns, inner_size, chunk_size)
         for (int row = 0; row < output_rows; row++) {
             for (int col = 0; col < output_columns; col++) {
                 for (int inner = 0; inner < inner_size; inner++) {
@@ -82,9 +82,9 @@ matrix multiply_matrixes_parallel(const matrix &matrix_a, const matrix &matrix_b
         }
     } else {
         printf("Multiplying matrixes using dynamic schedule with %d processors and %d dynamic portions\n",
-               processors_count, dynamic_portion);
-#pragma omp parallel for num_threads(processors_count) collapse(3) default(none) schedule(dynamic, dynamic_portion) \
-        shared(matrix_a, matrix_b, output_matrix, output_rows, output_columns, inner_size, dynamic_portion)
+               processors_count, chunk_size);
+#pragma omp parallel for num_threads(processors_count) collapse(3) default(none) schedule(dynamic, chunk_size) \
+        shared(matrix_a, matrix_b, output_matrix, output_rows, output_columns, inner_size, chunk_size)
         for (int row = 0; row < output_rows; row++) {
             for (int col = 0; col < output_columns; col++) {
                 for (int inner = 0; inner < inner_size; inner++) {
@@ -113,14 +113,14 @@ matrix multiply_matrixes_sequential(const matrix &matrix_a, const matrix &matrix
 }
 
 matrix multiply_matrixes(matrix &matrix_a, matrix &matrix_b, long double &Tp, long double &Ts, int process_count,
-                         bool is_schedule_static, int dynamic_portion) {
+                         bool is_schedule_static, int chunksize) {
     matrix output;
     long double start_time = omp_get_wtime();
     output = multiply_matrixes_sequential(matrix_a, matrix_b);
     long double end_time = omp_get_wtime();
     Ts = end_time - start_time;
     start_time = omp_get_wtime();
-    output = multiply_matrixes_parallel(matrix_a, matrix_b, process_count, is_schedule_static, dynamic_portion);
+    output = multiply_matrixes_parallel(matrix_a, matrix_b, process_count, is_schedule_static, chunksize);
     end_time = omp_get_wtime();
     Tp = end_time - start_time;
     return output;
@@ -181,28 +181,26 @@ int main(int argc, char *argv[]) {
     long double Ts;
     long double Tp;
     bool is_schedule_static = false;
-    int dynamic_portion = 0;
+    int chunk_size = 0;
     while (!prompt.compare("N")) {
-        dynamic_portion = 0;
+        chunk_size = 0;
         printf("Specify number of processes:\n");
         cin >> process_count;
         printf("Specify type of is_scheduled [static]/dynamic:\n");
         cin >> prompt;
         is_schedule_static = "dynamic" != prompt;
-        if (!is_schedule_static) {
-            printf("Specify dynamic portions:\n");
-            cin >> dynamic_portion;
-        }
+        printf("Specify chunk size:\n");
+        cin >> chunk_size;
         printf("Multiplying matrixes\n");
         matrix output_matrix = multiply_matrixes(matrix_a, matrix_b, Tp, Ts, process_count, is_schedule_static,
-                                                 dynamic_portion);
+                                                 chunk_size);
         std::ostringstream oss;
         oss << std::fixed << std::setprecision(OUTPUT_TIME_DECIMAL_PRECISION);
         oss << "C_" << Ts << "_" << Tp << ".csv";
         printf("Saving matrix\n");
         save_matrix(output_matrix, oss.str());
         OutputResult output_result = {
-                Tp, Ts, process_count, is_schedule_static, dynamic_portion
+                Tp, Ts, process_count, is_schedule_static, chunk_size
         };
         all_results.push_back(output_result);
         show_result(all_results);
