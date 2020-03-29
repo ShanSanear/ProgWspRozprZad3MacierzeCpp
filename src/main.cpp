@@ -27,11 +27,11 @@ struct OutputResult {
 
 void show_result(list<OutputResult> all_results) {
     TextTable table('-', '|', '+');
-    table.add("No");
+    table.add("No.");
     table.add("Tp");
     table.add("Ts");
     table.add("Process count");
-    table.add("Is schedule static?");
+    table.add("Type of schedule");
     table.add("Chunk size");
     table.endOfRow();
     int no = 0;
@@ -41,8 +41,8 @@ void show_result(list<OutputResult> all_results) {
         table.add(std::to_string(out_result.Tp));
         table.add(std::to_string(out_result.Ts));
         table.add(std::to_string(out_result.process_count));
-        table.add(out_result.is_schedule_static > 0 ? "true" : "false");
-        table.add(std::to_string(out_result.chunk_size));
+        table.add(out_result.is_schedule_static > 0 ? "static" : "dynamic");
+        table.add(out_result.chunk_size > 0 ? std::to_string(out_result.chunk_size) : "default");
         table.endOfRow();
     }
     std::cout << table << std::endl;
@@ -70,31 +70,60 @@ matrix multiply_matrixes_parallel(const matrix &matrix_a, const matrix &matrix_b
     int output_columns = output_matrix.at(0).size();
     int inner_size = matrix_b.size();
     if (is_schedule_static) {
-        printf("Multiplying matrixes using static schedule with %d processors\n", processors_count);
+
+        if (chunk_size != 0) {
+            printf("Multiplying matrixes using static schedule with %d processors and %d chunks\n",
+                   processors_count, chunk_size);
 #pragma omp parallel for num_threads(processors_count) collapse(3) default(none) schedule(static, chunk_size) \
         shared(matrix_a, matrix_b, output_matrix, output_rows, output_columns, inner_size, chunk_size)
-        for (int row = 0; row < output_rows; row++) {
-            for (int col = 0; col < output_columns; col++) {
-                for (int inner = 0; inner < inner_size; inner++) {
-                    output_matrix[row][col] += matrix_a[row][inner] * matrix_b[inner][col];
+            for (int row = 0; row < output_rows; row++) {
+                for (int col = 0; col < output_columns; col++) {
+                    for (int inner = 0; inner < inner_size; inner++) {
+                        output_matrix[row][col] += matrix_a[row][inner] * matrix_b[inner][col];
+                    }
+                }
+            }
+        } else {
+            printf("Multiplying matrixes using static schedule with %d processors\n", processors_count);
+#pragma omp parallel for num_threads(processors_count) collapse(3) default(none) schedule(static) \
+        shared(matrix_a, matrix_b, output_matrix, output_rows, output_columns, inner_size)
+            for (int row = 0; row < output_rows; row++) {
+                for (int col = 0; col < output_columns; col++) {
+                    for (int inner = 0; inner < inner_size; inner++) {
+                        output_matrix[row][col] += matrix_a[row][inner] * matrix_b[inner][col];
+                    }
                 }
             }
         }
     } else {
-        printf("Multiplying matrixes using dynamic schedule with %d processors and %d dynamic portions\n",
-               processors_count, chunk_size);
+        if (chunk_size != 0) {
+            printf("Multiplying matrixes using dynamic schedule with %d processors and %d chunks\n",
+                   processors_count, chunk_size);
 #pragma omp parallel for num_threads(processors_count) collapse(3) default(none) schedule(dynamic, chunk_size) \
         shared(matrix_a, matrix_b, output_matrix, output_rows, output_columns, inner_size, chunk_size)
-        for (int row = 0; row < output_rows; row++) {
-            for (int col = 0; col < output_columns; col++) {
-                for (int inner = 0; inner < inner_size; inner++) {
-                    output_matrix[row][col] += matrix_a[row][inner] * matrix_b[inner][col];
+            for (int row = 0; row < output_rows; row++) {
+                for (int col = 0; col < output_columns; col++) {
+                    for (int inner = 0; inner < inner_size; inner++) {
+                        output_matrix[row][col] += matrix_a[row][inner] * matrix_b[inner][col];
+                    }
+                }
+            }
+        } else {
+            printf("Multiplying matrixes using dynamic schedule with %d processors\n", processors_count);
+#pragma omp parallel for num_threads(processors_count) collapse(3) default(none) schedule(dynamic) \
+        shared(matrix_a, matrix_b, output_matrix, output_rows, output_columns, inner_size)
+            for (int row = 0; row < output_rows; row++) {
+                for (int col = 0; col < output_columns; col++) {
+                    for (int inner = 0; inner < inner_size; inner++) {
+                        output_matrix[row][col] += matrix_a[row][inner] * matrix_b[inner][col];
+                    }
                 }
             }
         }
     }
     return output_matrix;
 }
+
 
 matrix multiply_matrixes_sequential(const matrix &matrix_a, const matrix &matrix_b) {
     matrix output_matrix(matrix_a.size(), std::vector<double>(matrix_b.at(0).size()));
@@ -184,12 +213,12 @@ int main(int argc, char *argv[]) {
     int chunk_size = 0;
     while (!prompt.compare("N")) {
         chunk_size = 0;
-        printf("Specify number of processes:\n");
+        printf("Specify number of processors:\n");
         cin >> process_count;
-        printf("Specify type of is_scheduled [static]/dynamic:\n");
+        printf("Specify type of schedule [static]/dynamic:\n");
         cin >> prompt;
         is_schedule_static = "dynamic" != prompt;
-        printf("Specify chunk size:\n");
+        printf("Specify chunk size (0 = default for type of schedule):\n");
         cin >> chunk_size;
         printf("Multiplying matrixes\n");
         matrix output_matrix = multiply_matrixes(matrix_a, matrix_b, Tp, Ts, process_count, is_schedule_static,
