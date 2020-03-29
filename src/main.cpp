@@ -7,12 +7,26 @@
 #include <filesystem>
 #include "argument_parsing.cpp"
 #include <omp.h>
+#include <list>
 #include "menu.cpp"
+#include "../include/TextTable.h"
 
+const int DECIMAL_PRECISION = 6;
+const int OUTPUT_TIME_DECIMAL_PRECISION = 5;
 using matrix = std::vector<std::vector<double>>;
 namespace fs = std::filesystem;
+using namespace std;
 
-matrix parseCSV(const fs::path &input_csv_file) {
+struct OutputResult {
+    long double Tp;
+    long double Ts;
+    int process_count;
+    bool is_schedule_static;
+    int dynamic_portion;
+
+};
+
+matrix parse_csv(const fs::path &input_csv_file) {
     //TODO check if this also can be parallelize
     std::ifstream data(input_csv_file);
     std::string line;
@@ -33,25 +47,36 @@ matrix parseCSV(const fs::path &input_csv_file) {
     return parsedCsv;
 };
 
-matrix multiply_matrixes(const matrix &matrix_a, const matrix &matrix_b, int thread_number) {
+matrix multiply_matrixes_parallel(const matrix &matrix_a, const matrix &matrix_b, int processors_count,
+                                  bool is_schedule_static, int dynamic_portion) {
     matrix output_matrix(matrix_a.size(), std::vector<double>(matrix_b.at(0).size()));
-    long double start_time = omp_get_wtime();
-    /* Klauzula collapse znacząco ułatwia optymalizację zagnieżdżonych pętli.
-     * Przy użyciu zwykłego zagnieżdżania pętli, należałoby odpowiednio rozdzielić ilość procesorów pomiędzy nimi.
-     * W przypadku 3 zagnieżdżeń, jak poniżej jest to znacząco utrudnione by było optymalne.
-     * Collapse ułatwia to, przez co biblioteka sama zajmuje się rozdzieleniem wątków w najbardziej optymalny sposób,
-     * oraz powoduje że kod jest znacznie czytelniejszy.
-     * */
-#pragma omp parallel for num_threads(thread_number) default(none) shared(matrix_a, matrix_b, output_matrix) collapse(3)
-    for (std::size_t row = 0; row < output_matrix.size(); row++) {
-        for (std::size_t col = 0; col < output_matrix.at(0).size(); col++) {
-            for (std::size_t inner = 0; inner < matrix_b.size(); inner++) {
-                output_matrix.at(row).at(col) += matrix_a.at(row).at(inner) * matrix_b.at(inner).at(col);
+    int output_rows = output_matrix.size();
+    int output_columns = output_matrix.at(0).size();
+    int inner_size = matrix_b.size();
+    if (is_schedule_static) {
+        printf("Multiplying matrixes using static schedule with %d processors\n", processors_count);
+#pragma omp parallel for num_threads(processors_count) collapse(3) default(none) schedule(static) \
+        shared(matrix_a, matrix_b, output_matrix, output_rows, output_columns, inner_size)
+        for (int row = 0; row < output_rows; row++) {
+            for (int col = 0; col < output_columns; col++) {
+                for (int inner = 0; inner < inner_size; inner++) {
+                    output_matrix[row][col] += matrix_a[row][inner] * matrix_b[inner][col];
+                }
+            }
+        }
+    } else {
+        printf("Multiplying matrixes using dynamic schedule with %d processors and %d dynamic portions\n",
+               processors_count, dynamic_portion);
+#pragma omp parallel for num_threads(processors_count) collapse(3) default(none) schedule(dynamic, dynamic_portion) \
+        shared(matrix_a, matrix_b, output_matrix, output_rows, output_columns, inner_size, dynamic_portion)
+        for (int row = 0; row < output_rows; row++) {
+            for (int col = 0; col < output_columns; col++) {
+                for (int inner = 0; inner < inner_size; inner++) {
+                    output_matrix[row][col] += matrix_a[row][inner] * matrix_b[inner][col];
+                }
             }
         }
     }
-    long double end_time = omp_get_wtime();
-    printf("Multiplying took %Lf seconds\n using %d threads\n", end_time - start_time, thread_number);
     return output_matrix;
 }
 
@@ -61,7 +86,7 @@ void save_matrix(const matrix &matrix_to_save, const std::string &output_file_pa
     output << matrix_to_save.size() << std::endl;
     output << matrix_to_save.at(0).size() << std::endl;
     std::ostringstream oss;
-    oss << std::fixed << std::setprecision(6);
+    oss << std::fixed << std::setprecision(DECIMAL_PRECISION);
     for (auto row : matrix_to_save) {
         oss.str(std::string());
         std::copy(row.begin(), row.end() - 1, std::ostream_iterator<double>(oss, ";"));
@@ -79,8 +104,63 @@ bool check_matrix_sizes(const matrix &matrix_a, const matrix &matrix_b) {
     return matrix_a.at(0).size() == matrix_b.size();
 }
 
+matrix multiply_matrixes_sequential(const matrix &matrix_a, const matrix &matrix_b) {
+    matrix output_matrix(matrix_a.size(), std::vector<double>(matrix_b.at(0).size()));
+    int output_rows = output_matrix.size();
+    int output_columns = output_matrix.at(0).size();
+    int inner_size = matrix_b.size();
+    printf("Multiplying matrixes using sequential method\n");
+    for (int row = 0; row < output_rows; row++) {
+        for (int col = 0; col < output_columns; col++) {
+            for (int inner = 0; inner < inner_size; inner++) {
+                output_matrix[row][col] += matrix_a[row][inner] * matrix_b[inner][col];
+            }
+        }
+    }
+    return output_matrix;
+}
+
+matrix multiply_matrixes(matrix &matrix_a, matrix &matrix_b, long double &Tp, long double &Ts, int process_count,
+                         bool is_schedule_static, int dynamic_portion) {
+    matrix output;
+    long double start_time = omp_get_wtime();
+    output = multiply_matrixes_sequential(matrix_a, matrix_b);
+    long double end_time = omp_get_wtime();
+    Ts = end_time - start_time;
+    start_time = omp_get_wtime();
+    output = multiply_matrixes_parallel(matrix_a, matrix_b, process_count, is_schedule_static, dynamic_portion);
+    end_time = omp_get_wtime();
+    Tp = end_time - start_time;
+    return output;
+}
+
+void show_result(list<OutputResult> all_results) {
+    TextTable table('-', '|', '+');
+    table.add("No");
+    table.add("Tp");
+    table.add("Ts");
+    table.add("Process count");
+    table.add("Is schedule static?");
+    table.add("Dynamic portion");
+    table.endOfRow();
+    int no = 0;
+    for (OutputResult out_result : all_results) {
+        no++;
+        table.add(std::to_string(no));
+        table.add(std::to_string(out_result.Tp));
+        table.add(std::to_string(out_result.Ts));
+        table.add(std::to_string(out_result.process_count));
+        table.add(out_result.is_schedule_static > 0 ? "true" : "false");
+        table.add(out_result.dynamic_portion != 0 ? std::to_string(out_result.dynamic_portion) : "not dynamic");
+        table.endOfRow();
+    }
+    std::cout << table << std::endl;
+}
+
+
 int main(int argc, char *argv[]) {
     printf("Starting\n");
+    list<OutputResult> all_results;
     auto result = parse_arguments(argc, argv);
     fs::path matrix_a_path = fs::absolute(fs::path(result["matrix_a"].as<std::string>()));
     fs::path matrix_b_path = fs::absolute(fs::path(result["matrix_b"].as<std::string>()));
@@ -91,25 +171,65 @@ int main(int argc, char *argv[]) {
         exit(1);
     }
     printf("Loading matrix a\n");
-    matrix matrix_a = parseCSV(matrix_a_path);
+    matrix matrix_a = parse_csv(matrix_a_path);
     printf("Loading matrix b\n");
-    matrix matrix_b = parseCSV(matrix_b_path);
+    matrix matrix_b = parse_csv(matrix_b_path);
     if (!check_matrix_sizes(matrix_a, matrix_b)) {
         printf("Matrix sizes are incorrect\n");
         return -1;
     }
-    printf("Multiplying matrixes\n");
-    matrix output_matrix = multiply_matrixes(matrix_a, matrix_b, 2);
-    output_matrix = multiply_matrixes(matrix_a, matrix_b, 1);
-    output_matrix = multiply_matrixes(matrix_a, matrix_b, 4);
-    output_matrix = multiply_matrixes(matrix_a, matrix_b, 8);
-    output_matrix = multiply_matrixes(matrix_a, matrix_b, 8);
-    double Ts = 0.22;
-    double Tp = 0.22;
-    std::ostringstream oss;
-    oss << std::fixed << std::setprecision(5);
-    oss << "C_" << Ts << "_" << Tp << ".csv";
-    printf("Saving matrixes\n");
-    save_matrix(output_matrix, oss.str());
+    std::string prompt;
+    prompt = "N";
+    int process_count = 1;
+    long double Ts;
+    long double Tp;
+    bool is_schedule_static = false;
+    int dynamic_portion = 0;
+    while (!prompt.compare("N")) {
+        dynamic_portion = 0;
+        printf("Specify number of processes:\n");
+        cin >> process_count;
+        printf("Specify type of is_scheduled [static]/dynamic:\n");
+        cin >> prompt;
+        is_schedule_static = "dynamic" != prompt;
+        if (!is_schedule_static) {
+            printf("Specify dynamic portions:\n");
+            cin >> dynamic_portion;
+        }
+        printf("Multiplying matrixes\n");
+        matrix output_matrix = multiply_matrixes(matrix_a, matrix_b, Tp, Ts, process_count, is_schedule_static,
+                                                 dynamic_portion);
+        std::ostringstream oss;
+        oss << std::fixed << std::setprecision(OUTPUT_TIME_DECIMAL_PRECISION);
+        oss << "C_" << Ts << "_" << Tp << ".csv";
+        printf("Saving matrix\n");
+        save_matrix(output_matrix, oss.str());
+        OutputResult output_result = {
+                Tp, Ts, process_count, is_schedule_static, dynamic_portion
+        };
+        all_results.push_back(output_result);
+        show_result(all_results);
+        printf("Exit? [Y]/N:\n");
+
+        std::cin >> prompt;
+        if (prompt == "n") {
+            prompt = "N";
+        }
+    }
     return 0;
 }
+
+//SCHEDULE
+/* Klauzula schedule zwieksza mozliwosc sterowania w jaki sposob wykonywany jest program, jednak w przypadku niektórych
+ * parametrów zrównoleglenie może spowodować spowolnienie działania programu, zamiast jego przyspieszenie.
+ * Przykładowo w tym programie użycie 'dynamic' z małą wartością porcji dla każdego wątku powoduje znaczące
+ * spowolnienie. Jednak przy większych wartościach program działa szybciej niż w wersji sekwencyjnej.
+ */
+
+//COLLAPSE
+/* Klauzula collapse znacząco ułatwia optymalizację zagnieżdżonych pętli.
+ * Przy użyciu zwykłego zagnieżdżania pętli, należałoby odpowiednio rozdzielić ilość procesorów pomiędzy nimi.
+ * W przypadku 3 zagnieżdżeń, jak poniżej jest to znacząco utrudnione by było optymalne.
+ * Collapse ułatwia to, przez co biblioteka sama zajmuje się rozdzieleniem wątków w najbardziej optymalny sposób,
+ * oraz powoduje że kod jest znacznie czytelniejszy.
+ * */
