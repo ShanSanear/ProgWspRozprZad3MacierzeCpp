@@ -21,7 +21,7 @@ struct OutputResult {
     long double Ts;
     int process_count;
     bool is_schedule_static;
-    int dynamic_portion;
+    int chunk_size;
 
 };
 
@@ -42,7 +42,7 @@ void show_result(list<OutputResult> all_results) {
         table.add(std::to_string(out_result.Ts));
         table.add(std::to_string(out_result.process_count));
         table.add(out_result.is_schedule_static > 0 ? "true" : "false");
-        table.add(out_result.dynamic_portion != 0 ? std::to_string(out_result.dynamic_portion) : "not dynamic");
+        table.add(std::to_string(out_result.chunk_size));
         table.endOfRow();
     }
     std::cout << table << std::endl;
