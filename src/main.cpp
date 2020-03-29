@@ -32,7 +32,7 @@ void show_result(list<OutputResult> all_results) {
     table.add("Ts");
     table.add("Process count");
     table.add("Is schedule static?");
-    table.add("Dynamic portion");
+    table.add("Chunk size");
     table.endOfRow();
     int no = 0;
     for (OutputResult out_result : all_results) {
