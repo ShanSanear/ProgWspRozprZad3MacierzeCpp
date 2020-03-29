@@ -8,7 +8,6 @@
 #include "argument_parsing.cpp"
 #include <omp.h>
 #include <list>
-#include "menu.cpp"
 #include "../include/TextTable.h"
 
 const int DECIMAL_PRECISION = 6;
@@ -26,26 +25,43 @@ struct OutputResult {
 
 };
 
-matrix parse_csv(const fs::path &input_csv_file) {
-    //TODO check if this also can be parallelize
-    std::ifstream data(input_csv_file);
-    std::string line;
-    // Skipping required dimension lines
-    std::getline(data, line);
-    std::getline(data, line);
-    matrix parsedCsv;
-    while (std::getline(data, line)) {
-        std::vector<double> parsedRow;
-        std::stringstream s(line);
-        std::string cell;
-        while (std::getline(s, cell, ';')) {
-            parsedRow.push_back(std::stod(cell));
-        }
-
-        parsedCsv.push_back(parsedRow);
+void show_result(list<OutputResult> all_results) {
+    TextTable table('-', '|', '+');
+    table.add("No");
+    table.add("Tp");
+    table.add("Ts");
+    table.add("Process count");
+    table.add("Is schedule static?");
+    table.add("Dynamic portion");
+    table.endOfRow();
+    int no = 0;
+    for (OutputResult out_result : all_results) {
+        no++;
+        table.add(std::to_string(no));
+        table.add(std::to_string(out_result.Tp));
+        table.add(std::to_string(out_result.Ts));
+        table.add(std::to_string(out_result.process_count));
+        table.add(out_result.is_schedule_static > 0 ? "true" : "false");
+        table.add(out_result.dynamic_portion != 0 ? std::to_string(out_result.dynamic_portion) : "not dynamic");
+        table.endOfRow();
     }
-    return parsedCsv;
-};
+    std::cout << table << std::endl;
+}
+
+void save_matrix(const matrix &matrix_to_save, const std::string &output_file_path) {
+    std::ofstream output(output_file_path);
+
+    output << matrix_to_save.size() << std::endl;
+    output << matrix_to_save.at(0).size() << std::endl;
+    std::ostringstream oss;
+    oss << std::fixed << std::setprecision(DECIMAL_PRECISION);
+    for (auto row : matrix_to_save) {
+        oss.str(std::string());
+        std::copy(row.begin(), row.end() - 1, std::ostream_iterator<double>(oss, ";"));
+        std::copy(row.end() - 1, row.end(), std::ostream_iterator<double>(oss));
+        output << oss.str() << std::endl;
+    }
+}
 
 matrix multiply_matrixes_parallel(const matrix &matrix_a, const matrix &matrix_b, int processors_count,
                                   bool is_schedule_static, int dynamic_portion) {
@@ -80,30 +96,6 @@ matrix multiply_matrixes_parallel(const matrix &matrix_a, const matrix &matrix_b
     return output_matrix;
 }
 
-void save_matrix(const matrix &matrix_to_save, const std::string &output_file_path) {
-    std::ofstream output(output_file_path);
-
-    output << matrix_to_save.size() << std::endl;
-    output << matrix_to_save.at(0).size() << std::endl;
-    std::ostringstream oss;
-    oss << std::fixed << std::setprecision(DECIMAL_PRECISION);
-    for (auto row : matrix_to_save) {
-        oss.str(std::string());
-        std::copy(row.begin(), row.end() - 1, std::ostream_iterator<double>(oss, ";"));
-        std::copy(row.end() - 1, row.end(), std::ostream_iterator<double>(oss));
-        output << oss.str() << std::endl;
-    }
-}
-
-bool check_matrix_sizes(const matrix &matrix_a, const matrix &matrix_b) {
-    //TODO there should be only one of those checks, but which one?
-    printf("Matrix a rows: %llu\n", matrix_a.size());
-    printf("Matrix a columns: %llu\n", matrix_a.at(0).size());
-    printf("Matrix b rows: %llu\n", matrix_b.size());
-    printf("Matrix b columns: %llu\n", matrix_b.at(0).size());
-    return matrix_a.at(0).size() == matrix_b.size();
-}
-
 matrix multiply_matrixes_sequential(const matrix &matrix_a, const matrix &matrix_b) {
     matrix output_matrix(matrix_a.size(), std::vector<double>(matrix_b.at(0).size()));
     int output_rows = output_matrix.size();
@@ -134,28 +126,33 @@ matrix multiply_matrixes(matrix &matrix_a, matrix &matrix_b, long double &Tp, lo
     return output;
 }
 
-void show_result(list<OutputResult> all_results) {
-    TextTable table('-', '|', '+');
-    table.add("No");
-    table.add("Tp");
-    table.add("Ts");
-    table.add("Process count");
-    table.add("Is schedule static?");
-    table.add("Dynamic portion");
-    table.endOfRow();
-    int no = 0;
-    for (OutputResult out_result : all_results) {
-        no++;
-        table.add(std::to_string(no));
-        table.add(std::to_string(out_result.Tp));
-        table.add(std::to_string(out_result.Ts));
-        table.add(std::to_string(out_result.process_count));
-        table.add(out_result.is_schedule_static > 0 ? "true" : "false");
-        table.add(out_result.dynamic_portion != 0 ? std::to_string(out_result.dynamic_portion) : "not dynamic");
-        table.endOfRow();
-    }
-    std::cout << table << std::endl;
+bool check_matrix_sizes(const matrix &matrix_a, const matrix &matrix_b) {
+    printf("Matrix a rows: %llu\n", matrix_a.size());
+    printf("Matrix a columns: %llu\n", matrix_a.at(0).size());
+    printf("Matrix b rows: %llu\n", matrix_b.size());
+    printf("Matrix b columns: %llu\n", matrix_b.at(0).size());
+    return matrix_a.at(0).size() == matrix_b.size();
 }
+
+matrix parse_csv(const fs::path &input_csv_file) {
+    std::ifstream data(input_csv_file);
+    std::string line;
+    // Skipping required dimension lines
+    std::getline(data, line);
+    std::getline(data, line);
+    matrix parsedCsv;
+    while (std::getline(data, line)) {
+        std::vector<double> parsedRow;
+        std::stringstream s(line);
+        std::string cell;
+        while (std::getline(s, cell, ';')) {
+            parsedRow.push_back(std::stod(cell));
+        }
+
+        parsedCsv.push_back(parsedRow);
+    }
+    return parsedCsv;
+};
 
 
 int main(int argc, char *argv[]) {
